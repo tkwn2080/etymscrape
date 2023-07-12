@@ -3,21 +3,18 @@ from bs4 import BeautifulSoup
 import json
 import time
 
+session = requests.Session()
+
 def get_etymology(word):
     url = f'https://www.etymonline.com/word/{word}'
-    response = requests.get(url)
+    response = session.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
 
     etymology_section = soup.find('section', {'class': 'word__defination--2q7ZH'})
 
     if etymology_section:
-        etymology_text = ''
-        for paragraph in etymology_section.find_all('p'):
-            etymology_text += str(paragraph)
-
-        cleaned_etymology = BeautifulSoup(etymology_text, 'html.parser')
-        response_text = cleaned_etymology.get_text(strip=True)
-        return {"prompt": word, "response": response_text}
+        etymology_text = ' '.join(paragraph.get_text(strip=True) for paragraph in etymology_section.find_all('p'))
+        return {"prompt": word, "response": etymology_text}
     else:
         return None
 
@@ -38,7 +35,7 @@ def save_scraped_data(output_file, scraped_data):
     with open(output_file, 'w') as f:
         json.dump(scraped_data, f, ensure_ascii=False, indent=2)
 
-def main(words_file, output_file):
+def main(words_file, output_file, batch_size=10):
     words = load_words(words_file)
     scraped_data = load_scraped_data(output_file)
 
@@ -48,7 +45,7 @@ def main(words_file, output_file):
     else:
         start_index = 0
 
-    for word in words[start_index:]:
+    for i, word in enumerate(words[start_index:], start=start_index):
         etymology = get_etymology(word)
         if etymology:
             scraped_data.append(etymology)
@@ -56,8 +53,10 @@ def main(words_file, output_file):
         else:
             print(f'Etymology not found for {word}')
 
-        save_scraped_data(output_file, scraped_data)
-        time.sleep(1)  # To avoid overloading the server
+        if (i + 1) % batch_size == 0:
+            save_scraped_data(output_file, scraped_data)
+
+    save_scraped_data(output_file, scraped_data)
 
 if __name__ == '__main__':
     main('words.txt', 'etymology_data.json')
